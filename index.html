@@ -2433,22 +2433,34 @@
         async function fbGet(k) {
             const key = nsKey(k);
             let val = null;
+
+            // 1. Try Firebase
             if (window.fbLoad) {
                 try { val = await window.fbLoad(key); } catch(e) {}
             }
-            if (val === null || val === undefined) {
+
+            // If Firebase returned empty array, also check localStorage for better data
+            const fbEmpty = val === null || val === undefined || (Array.isArray(val) && val.length === 0);
+            
+            if (fbEmpty) {
                 try {
                     const cached = localStorage.getItem(key);
-                    if (cached && cached !== 'null') {
+                    if (cached && cached !== 'null' && cached !== '[]') {
                         const p = JSON.parse(cached);
-                        if (Array.isArray(p) ? p.length > 0 : true) {
+                        if (Array.isArray(p) && p.length > 0) {
                             val = p;
+                            // Upload localStorage data to Firebase
                             if (window.fbSave) window.fbSave(key, val);
+                        } else if (!Array.isArray(p) && p && typeof p === 'object') {
+                            val = p;
                         }
                     }
                 } catch(e) {}
             }
-            if (val !== null && val !== undefined) localStorage.setItem(key, JSON.stringify(val));
+
+            if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
+                localStorage.setItem(key, JSON.stringify(val));
+            }
             return val;
         }
 
