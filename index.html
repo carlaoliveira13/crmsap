@@ -333,64 +333,70 @@
         #max-wrapper .card-ja { margin-bottom: 20px; }
     </style>
 
-    <!-- Firebase via REST API (sem SDK externo) -->
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script>
     (function() {
-        var PROJECT_ID = 'crm-sap-16e39';
-        var API_KEY    = 'AIzaSyD9-mXFnjHXFN_ush03JN3wSFAqbxFN2Os';
-        var BASE_URL   = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID + '/databases/(default)/documents/sap_data/';
-
-        window.fbSave = function(key, data) {
-            var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-            var url = BASE_URL + safeKey + '?key=' + API_KEY;
-            var body = JSON.stringify({
-                fields: {
-                    value: { stringValue: JSON.stringify(data) },
-                    ts:    { integerValue: String(Date.now()) }
-                }
-            });
-            return fetch(url, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: body
-            }).catch(function() {
-                localStorage.setItem(key, JSON.stringify(data));
-            });
+        var firebaseConfig = {
+            apiKey: "AIzaSyD9-mXFnjHXFN_ush03JN3wSFAqbxFN2Os",
+            authDomain: "crm-sap-16e39.firebaseapp.com",
+            projectId: "crm-sap-16e39",
+            storageBucket: "crm-sap-16e39.firebasestorage.app",
+            messagingSenderId: "834412649364",
+            appId: "1:834412649364:web:6f3b65edd283f1d64b4d81"
         };
+        try {
+            var app = firebase.initializeApp(firebaseConfig);
+            var db  = firebase.firestore();
 
-        window.fbLoad = function(key) {
-            var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-            var url = BASE_URL + safeKey + '?key=' + API_KEY;
-            return fetch(url)
-                .then(function(r) {
-                    if (r.status === 404) return null;
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
-                .then(function(doc) {
-                    if (!doc || !doc.fields || !doc.fields.value) return null;
-                    try { return JSON.parse(doc.fields.value.stringValue); }
-                    catch(e) { return null; }
-                })
-                .catch(function() {
-                    var ls = localStorage.getItem(key);
-                    return (ls && ls !== 'null') ? JSON.parse(ls) : null;
-                });
-        };
+            window.fbSave = function(key, data) {
+                var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+                return db.collection('sap_data').doc(safeKey)
+                    .set({ value: JSON.stringify(data), ts: Date.now() })
+                    .catch(function() {
+                        localStorage.setItem(key, JSON.stringify(data));
+                    });
+            };
 
-        window.fbWatchChat = function(chatKey, callback) {
-            var interval = setInterval(function() {
-                window.fbLoad(chatKey).then(function(msgs) {
-                    if (msgs) callback(msgs);
-                });
-            }, 10000);
-            return function() { clearInterval(interval); };
-        };
+            window.fbLoad = function(key) {
+                var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+                return db.collection('sap_data').doc(safeKey).get()
+                    .then(function(snap) {
+                        if (snap.exists) {
+                            var v = snap.data().value;
+                            return v ? JSON.parse(v) : null;
+                        }
+                        return null;
+                    })
+                    .catch(function() {
+                        var ls = localStorage.getItem(key);
+                        return ls ? JSON.parse(ls) : null;
+                    });
+            };
 
-        window._firebaseReady = true;
-        var el = document.getElementById('firebase-status');
-        if (el) { el.textContent = '🟢 Firebase conectado'; el.style.color = '#198754'; }
-        console.log('✅ Firebase REST API pronto');
+            window.fbWatchChat = function(chatKey, callback) {
+                var safeKey = chatKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                return db.collection('sap_data').doc(safeKey)
+                    .onSnapshot(function(snap) {
+                        if (snap.exists) {
+                            try {
+                                var msgs = JSON.parse(snap.data().value || '[]');
+                                callback(msgs);
+                            } catch(e) {}
+                        }
+                    }, function() {});
+            };
+
+            window._firebaseReady = true;
+            var el = document.getElementById('firebase-status');
+            if (el) { el.textContent = '🟢 Firebase conectado'; el.style.color = '#198754'; }
+            console.log('✅ Firebase SDK conectado');
+        } catch(e) {
+            console.warn('Firebase SDK falhou:', e);
+            var el = document.getElementById('firebase-status');
+            if (el) { el.textContent = '🟡 modo offline'; el.style.color = '#856404'; }
+        }
     })();
     </script>
 </head>
