@@ -2429,57 +2429,53 @@
 
     async function loadData() {
         if (!_NS || _NS === 'SAP_default_') return;
-        
-        const keys = {
-            produtos:       'masterProdutos',
-            vendas:         'vendasData',
-            movimentos:     'movimentos',
-            leads:          'leadsData',
-            marketing:      'mktData',
-            clientes:       'clientesData',
-            financeiro:     'financeiroData',
-            fornecedores:   'fornecedoresData',
-            mkt_desempenho: 'mktDesempenhoData',
-            eventos:        'eventosData',
-            metas:          'userMetas',
-            materia_prima:  'materiaPrimaData',
-            orcamentos:     'orcamentosData',
-            calc_historico: 'calcHistorico'
-        };
-        const defaults = { metas: { diaria:0, mensal:0, anual:0 } };
 
-        await Promise.all(Object.entries(keys).map(async ([k, varName]) => {
+        // Load each key sequentially from Firebase
+        const pairs = [
+            ['produtos',       'masterProdutos',    []],
+            ['vendas',         'vendasData',         []],
+            ['movimentos',     'movimentos',         []],
+            ['leads',          'leadsData',          []],
+            ['marketing',      'mktData',            []],
+            ['clientes',       'clientesData',       []],
+            ['financeiro',     'financeiroData',     []],
+            ['fornecedores',   'fornecedoresData',   []],
+            ['mkt_desempenho', 'mktDesempenhoData',  []],
+            ['eventos',        'eventosData',        []],
+            ['metas',          'userMetas',          { diaria:0, mensal:0, anual:0 }],
+            ['materia_prima',  'materiaPrimaData',   []],
+            ['orcamentos',     'orcamentosData',     []],
+            ['calc_historico', 'calcHistorico',      []],
+        ];
+
+        for (const [k, varName, def] of pairs) {
             const key = nsKey(k);
             let val = null;
 
-            // Try Firebase
+            // 1. Try Firebase
             if (window.fbLoad) {
                 try { val = await window.fbLoad(key); } catch(e) {}
             }
 
-            // Fallback to localStorage
+            // 2. Fallback localStorage
             if (val === null || val === undefined) {
-                const cached = localStorage.getItem(key);
-                if (cached && cached !== 'null' && cached !== '[]') {
-                    try {
+                try {
+                    const cached = localStorage.getItem(key);
+                    if (cached && cached !== 'null') {
                         const p = JSON.parse(cached);
                         if (Array.isArray(p) ? p.length > 0 : (p && typeof p === 'object')) {
                             val = p;
-                            // Upload to Firebase since it wasn't there
                             if (window.fbSave) window.fbSave(key, val);
                         }
-                    } catch(e) {}
-                }
+                    }
+                } catch(e) {}
             }
 
-            // Set value or default
-            window[varName] = val !== null && val !== undefined ? val : (defaults[k] || []);
-            
-            // Update localStorage cache
+            window[varName] = (val !== null && val !== undefined) ? val : def;
             if (val !== null && val !== undefined) {
                 localStorage.setItem(key, JSON.stringify(val));
             }
-        }));
+        }
     }
 
     let masterProdutos    = [];
