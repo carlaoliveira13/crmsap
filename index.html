@@ -338,64 +338,42 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script>
     (function() {
-        var firebaseConfig = {
-            apiKey: "AIzaSyD9-mXFnjHXFN_ush03JN3wSFAqbxFN2Os",
-            authDomain: "crm-sap-16e39.firebaseapp.com",
-            projectId: "crm-sap-16e39",
-            storageBucket: "crm-sap-16e39.firebasestorage.app",
-            messagingSenderId: "834412649364",
-            appId: "1:834412649364:web:6f3b65edd283f1d64b4d81"
-        };
         try {
-            var app = firebase.initializeApp(firebaseConfig);
-            var db  = firebase.firestore();
+            firebase.initializeApp({
+                apiKey: "AIzaSyD9-mXFnjHXFN_ush03JN3wSFAqbxFN2Os",
+                authDomain: "crm-sap-16e39.firebaseapp.com",
+                projectId: "crm-sap-16e39",
+                storageBucket: "crm-sap-16e39.firebasestorage.app",
+                messagingSenderId: "834412649364",
+                appId: "1:834412649364:web:6f3b65edd283f1d64b4d81"
+            });
+            var db = firebase.firestore();
+            var COL = 'sap_data';
 
             window.fbSave = function(key, data) {
-                var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-                return db.collection('sap_data').doc(safeKey)
-                    .set({ value: JSON.stringify(data), ts: Date.now() })
-                    .catch(function() {
-                        localStorage.setItem(key, JSON.stringify(data));
-                    });
+                var k = key.replace(/[^a-zA-Z0-9_-]/g,'_');
+                return db.collection(COL).doc(k).set({value: JSON.stringify(data), ts: Date.now()});
             };
-
             window.fbLoad = function(key) {
-                var safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-                return db.collection('sap_data').doc(safeKey).get()
-                    .then(function(snap) {
-                        if (snap.exists) {
-                            var v = snap.data().value;
-                            return v ? JSON.parse(v) : null;
-                        }
-                        return null;
-                    })
-                    .catch(function() {
-                        var ls = localStorage.getItem(key);
-                        return ls ? JSON.parse(ls) : null;
-                    });
+                var k = key.replace(/[^a-zA-Z0-9_-]/g,'_');
+                return db.collection(COL).doc(k).get().then(function(s){
+                    if(!s.exists) return null;
+                    try{ return JSON.parse(s.data().value); }catch(e){ return null; }
+                }).catch(function(){ return null; });
             };
-
-            window.fbWatchChat = function(chatKey, callback) {
-                var safeKey = chatKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-                return db.collection('sap_data').doc(safeKey)
-                    .onSnapshot(function(snap) {
-                        if (snap.exists) {
-                            try {
-                                var msgs = JSON.parse(snap.data().value || '[]');
-                                callback(msgs);
-                            } catch(e) {}
-                        }
-                    }, function() {});
+            window.fbWatch = function(key, cb) {
+                var k = key.replace(/[^a-zA-Z0-9_-]/g,'_');
+                return db.collection(COL).doc(k).onSnapshot(function(s){
+                    if(s.exists) try{ cb(JSON.parse(s.data().value||'[]')); }catch(e){}
+                }, function(){});
             };
-
+            window.fbWatchChat = window.fbWatch;
             window._firebaseReady = true;
             var el = document.getElementById('firebase-status');
-            if (el) { el.textContent = '🟢 Firebase conectado'; el.style.color = '#198754'; }
+            if(el){ el.textContent='🟢 Firebase conectado'; el.style.color='#198754'; }
             console.log('✅ Firebase SDK conectado');
         } catch(e) {
-            console.warn('Firebase SDK falhou:', e);
-            var el = document.getElementById('firebase-status');
-            if (el) { el.textContent = '🟡 modo offline'; el.style.color = '#856404'; }
+            console.warn('Firebase falhou:', e);
         }
     })();
     </script>
@@ -2430,54 +2408,40 @@
     async function loadData() {
         if (!_NS || _NS === 'SAP_default_') return;
 
-        async function fbGet(k) {
+        async function get(k) {
             const key = nsKey(k);
-            let val = null;
-
-            // 1. Try Firebase
+            // Try Firebase first
             if (window.fbLoad) {
-                try { val = await window.fbLoad(key); } catch(e) {}
-            }
-
-            // If Firebase returned empty array, also check localStorage for better data
-            const fbEmpty = val === null || val === undefined || (Array.isArray(val) && val.length === 0);
-            
-            if (fbEmpty) {
                 try {
-                    const cached = localStorage.getItem(key);
-                    if (cached && cached !== 'null' && cached !== '[]') {
-                        const p = JSON.parse(cached);
-                        if (Array.isArray(p) && p.length > 0) {
-                            val = p;
-                            // Upload localStorage data to Firebase
-                            if (window.fbSave) window.fbSave(key, val);
-                        } else if (!Array.isArray(p) && p && typeof p === 'object') {
-                            val = p;
-                        }
+                    const v = await window.fbLoad(key);
+                    if (v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0)) {
+                        localStorage.setItem(key, JSON.stringify(v));
+                        return v;
                     }
                 } catch(e) {}
             }
-
-            if (val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) {
-                localStorage.setItem(key, JSON.stringify(val));
-            }
-            return val;
+            // Fallback: localStorage
+            try {
+                const c = localStorage.getItem(key);
+                if (c && c !== 'null' && c !== '[]') return JSON.parse(c);
+            } catch(e) {}
+            return null;
         }
 
-        masterProdutos    = await fbGet('produtos')       || [];
-        vendasData        = await fbGet('vendas')          || [];
-        movimentos        = await fbGet('movimentos')      || [];
-        leadsData         = await fbGet('leads')           || [];
-        mktData           = await fbGet('marketing')       || [];
-        clientesData      = await fbGet('clientes')        || [];
-        financeiroData    = await fbGet('financeiro')      || [];
-        fornecedoresData  = await fbGet('fornecedores')    || [];
-        mktDesempenhoData = await fbGet('mkt_desempenho')  || [];
-        eventosData       = await fbGet('eventos')         || [];
-        userMetas         = await fbGet('metas')           || { diaria:0, mensal:0, anual:0 };
-        materiaPrimaData  = await fbGet('materia_prima')   || [];
-        orcamentosData    = await fbGet('orcamentos')      || [];
-        calcHistorico     = await fbGet('calc_historico')  || [];
+        masterProdutos    = await get('produtos')        || [];
+        vendasData        = await get('vendas')           || [];
+        movimentos        = await get('movimentos')       || [];
+        leadsData         = await get('leads')            || [];
+        mktData           = await get('marketing')        || [];
+        clientesData      = await get('clientes')         || [];
+        financeiroData    = await get('financeiro')       || [];
+        fornecedoresData  = await get('fornecedores')     || [];
+        mktDesempenhoData = await get('mkt_desempenho')   || [];
+        eventosData       = await get('eventos')          || [];
+        userMetas         = await get('metas')            || { diaria:0, mensal:0, anual:0 };
+        materiaPrimaData  = await get('materia_prima')    || [];
+        orcamentosData    = await get('orcamentos')       || [];
+        calcHistorico     = await get('calc_historico')   || [];
     }
 
     let masterProdutos    = [];
@@ -2495,26 +2459,20 @@
 
     function saveToLocal() {
         if (!_NS || _NS === 'SAP_default_' || !currentUser) return;
-        // Save to localStorage immediately (instant)
-        const dados = [
-            ['produtos',       masterProdutos],
-            ['vendas',         vendasData],
-            ['movimentos',     movimentos],
-            ['leads',          leadsData],
-            ['marketing',      mktData],
-            ['clientes',       clientesData],
-            ['financeiro',     financeiroData],
-            ['fornecedores',   fornecedoresData],
-            ['mkt_desempenho', mktDesempenhoData],
-            ['eventos',        eventosData],
-            ['metas',          userMetas],
-            ['materia_prima',  materiaPrimaData],
-            ['orcamentos',     orcamentosData],
-            ['calc_historico', calcHistorico],
+        const pairs = [
+            ['produtos', masterProdutos], ['vendas', vendasData],
+            ['movimentos', movimentos], ['leads', leadsData],
+            ['marketing', mktData], ['clientes', clientesData],
+            ['financeiro', financeiroData], ['fornecedores', fornecedoresData],
+            ['mkt_desempenho', mktDesempenhoData], ['eventos', eventosData],
+            ['metas', userMetas], ['materia_prima', materiaPrimaData],
+            ['orcamentos', orcamentosData], ['calc_historico', calcHistorico],
         ];
-        dados.forEach(([k, v]) => localStorage.setItem(nsKey(k), JSON.stringify(v)));
-        // Sync to Firebase
-        masterSync();
+        pairs.forEach(([k, v]) => {
+            const key = nsKey(k);
+            localStorage.setItem(key, JSON.stringify(v));
+            if (window.fbSave) window.fbSave(key, v);
+        });
     }
 
     function saveMetas() {
